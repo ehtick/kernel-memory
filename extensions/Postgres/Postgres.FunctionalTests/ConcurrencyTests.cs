@@ -2,9 +2,9 @@
 
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.MemoryStorage;
-using Microsoft.TestHelpers;
+using Microsoft.KM.TestHelpers;
 
-namespace Postgres.FunctionalTests;
+namespace Microsoft.Postgres.FunctionalTests;
 
 public class ConcurrencyTests : BaseFunctionalTestCase
 {
@@ -22,7 +22,7 @@ public class ConcurrencyTests : BaseFunctionalTestCase
         switch (type)
         {
             default:
-                throw new ArgumentOutOfRangeException($"Unknown '{type}' test case");
+                throw new ArgumentOutOfRangeException(nameof(type), $"Unknown '{type}' test case");
 
             case "defaultSQL":
                 config = this.PostgresConfig;
@@ -63,10 +63,9 @@ public class ConcurrencyTests : BaseFunctionalTestCase
                 break;
         }
 
-        // ReSharper disable once CommentTypo
         /* If concurrency is not handled properly, the test should fail with
          *   Npgsql.PostgresException
-         *   23505: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+         *   23505: duplicate key value violates unique constraint
          */
         var concurrency = 20;
         var indexName = "create_index_test";

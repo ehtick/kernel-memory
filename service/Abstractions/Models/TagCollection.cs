@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace Microsoft.KernelMemory;
 
@@ -68,7 +69,7 @@ public class TagCollection : IDictionary<string, List<string?>>
     {
         ValidateKey(key);
         // If the key exists
-        if (this._data.TryGetValue(key, out List<string?> list) && list != null)
+        if (this._data.TryGetValue(key, out List<string?>? list) && list != null)
         {
             if (value != null) { list.Add(value); }
         }
@@ -87,7 +88,9 @@ public class TagCollection : IDictionary<string, List<string?>>
 
     public bool TryGetValue(string key, out List<string?> value)
     {
-        return this._data.TryGetValue(key, out value);
+        bool result = this._data.TryGetValue(key, out var valueOut);
+        value = valueOut ?? new List<string?>();
+        return result;
     }
 
     public bool Contains(KeyValuePair<string, List<string?>> item)
@@ -143,21 +146,52 @@ public class TagCollection : IDictionary<string, List<string?>>
         this._data.Clear();
     }
 
+    public override string ToString()
+    {
+        return ToString(this._data.Where(x => x.Value.Count > 0));
+    }
+
+    public string ToStringExcludeReserved()
+    {
+        return ToString(this._data.Where(x => x.Value.Count > 0 && !x.Key.StartsWith(Constants.ReservedTagsPrefix, StringComparison.Ordinal)));
+    }
+
+    private static string ToString(IEnumerable<KeyValuePair<string, List<string?>>> list)
+    {
+        var result = new StringBuilder();
+
+        foreach (KeyValuePair<string, List<string?>> tags in list)
+        {
+            if (tags.Value.Count == 1)
+            {
+                result.Append(tags.Key).Append(':').Append(tags.Value.First());
+            }
+            else
+            {
+                result.Append(tags.Key).Append(":[").Append(string.Join(", ", tags.Value)).Append(']');
+            }
+
+            result.Append(';');
+        }
+
+        return result.ToString().TrimEnd(';');
+    }
+
     private static void ValidateKey(string key)
     {
-        if (key.Contains(Constants.ReservedEqualsChar))
+        if (key.Contains(Constants.ReservedEqualsChar, StringComparison.OrdinalIgnoreCase))
         {
             throw new KernelMemoryException($"A tag name cannot contain the '{Constants.ReservedEqualsChar}' char");
         }
 
         // '=' is reserved for backward/forward compatibility and to reduce URLs query params encoding complexity
-        if (key.Contains('='))
+        if (key.Contains('=', StringComparison.OrdinalIgnoreCase))
         {
             throw new KernelMemoryException("A tag name cannot contain the '=' char");
         }
 
         // ':' is reserved for backward/forward compatibility
-        if (key.Contains(':'))
+        if (key.Contains(':', StringComparison.OrdinalIgnoreCase))
         {
             throw new KernelMemoryException("A tag name cannot contain the ':' char");
         }

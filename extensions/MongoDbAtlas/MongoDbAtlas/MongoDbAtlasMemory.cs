@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -19,7 +20,8 @@ namespace Microsoft.KernelMemory.MongoDbAtlas;
 /// <summary>
 /// Implementation of <see cref="IMemoryDb"/> based on MongoDB Atlas.
 /// </summary>
-public class MongoDbAtlasMemory : MongoDbAtlasBaseStorage, IMemoryDb
+[Experimental("KMEXP03")]
+public sealed class MongoDbAtlasMemory : MongoDbAtlasBaseStorage, IMemoryDb
 {
     private const string ConnectionNamePrefix = "_ix_";
 
@@ -32,14 +34,16 @@ public class MongoDbAtlasMemory : MongoDbAtlasBaseStorage, IMemoryDb
     /// </summary>
     /// <param name="config">Configuration</param>
     /// <param name="embeddingGenerator">Embedding generator</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     public MongoDbAtlasMemory(
         MongoDbAtlasConfig config,
         ITextEmbeddingGenerator embeddingGenerator,
-        ILogger<MongoDbAtlasMemory>? log = null) : base(config)
+        ILoggerFactory? loggerFactory = null) : base(config)
     {
-        this._embeddingGenerator = embeddingGenerator ?? throw new ArgumentNullException(nameof(embeddingGenerator));
-        this._log = log ?? DefaultLogger<MongoDbAtlasMemory>.Instance;
+        ArgumentNullExceptionEx.ThrowIfNull(embeddingGenerator, nameof(embeddingGenerator), "Embedding generator is null");
+
+        this._embeddingGenerator = embeddingGenerator;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<MongoDbAtlasMemory>();
         this._utils = new MongoDbAtlasSearchHelper(this.Config.ConnectionString, this.Config.DatabaseName);
     }
 
@@ -341,10 +345,7 @@ public class MongoDbAtlasMemory : MongoDbAtlasBaseStorage, IMemoryDb
 
     private static string NormalizeIndexName(string indexName)
     {
-        if (string.IsNullOrWhiteSpace(indexName))
-        {
-            throw new ArgumentNullException(nameof(indexName), "The index name is empty");
-        }
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(indexName, nameof(indexName), "The index name is empty");
 
         return indexName.Replace("_", "-", StringComparison.OrdinalIgnoreCase);
     }

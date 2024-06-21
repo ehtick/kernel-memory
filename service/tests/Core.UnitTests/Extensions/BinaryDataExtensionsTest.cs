@@ -1,12 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using Microsoft.KernelMemory.Extensions;
-using Microsoft.TestHelpers;
+using Microsoft.KM.TestHelpers;
 using Xunit.Abstractions;
 
-namespace Core.UnitTests.Extensions;
+namespace Microsoft.KM.Core.UnitTests.Extensions;
 
-// ReSharper disable StringLiteralTypo
 public class BinaryDataExtensionsTest : BaseUnitTestCase
 {
     public BinaryDataExtensionsTest(ITestOutputHelper output) : base(output)

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,13 +11,14 @@ using Microsoft.KernelMemory.Pipeline;
 
 namespace Microsoft.KernelMemory.DataFormats.Text;
 
-public class TextDecoder : IContentDecoder
+[Experimental("KMEXP00")]
+public sealed class TextDecoder : IContentDecoder
 {
     private readonly ILogger<TextDecoder> _log;
 
-    public TextDecoder(ILogger<TextDecoder>? log = null)
+    public TextDecoder(ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<TextDecoder>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<TextDecoder>();
     }
 
     /// <inheritdoc />
@@ -53,7 +55,7 @@ public class TextDecoder : IContentDecoder
 
         var result = new FileContent(MimeTypes.PlainText);
         using var reader = new StreamReader(data);
-        var content = await reader.ReadToEndAsync().ConfigureAwait(false);
+        var content = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
         result.Sections.Add(new(1, content.Trim(), true));
         return result;

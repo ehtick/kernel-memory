@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Text.Json.Serialization;
 
 #pragma warning disable IDE0130 // reduce number of "using" statements
@@ -21,6 +20,29 @@ public class OpenAIConfig
     }
 
     /// <summary>
+    /// The type of OpenAI completion to use, either Text (legacy) or Chat.
+    /// When using Auto, the client uses OpenAI model names to detect the correct protocol.
+    /// Most OpenAI models use Chat. If you're using a non-OpenAI model, you might want to set this manually.
+    /// </summary>
+    public TextGenerationTypes TextGenerationType { get; set; } = TextGenerationTypes.Auto;
+
+    /// <summary>
+    /// OpenAI API key.
+    /// </summary>
+    public string APIKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional OpenAI Organization ID.
+    /// </summary>
+    public string? OrgId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// OpenAI HTTP endpoint. You may need to override this to work with
+    /// OpenAI compatible services like LM Studio.
+    /// </summary>
+    public string Endpoint { get; set; } = "https://api.openai.com/v1";
+
+    /// <summary>
     /// Model used for text generation. Chat models can be used too.
     /// </summary>
     public string TextModel { get; set; } = string.Empty;
@@ -29,13 +51,6 @@ public class OpenAIConfig
     /// The max number of tokens supported by the text model.
     /// </summary>
     public int TextModelMaxTokenTotal { get; set; } = 8192;
-
-    /// <summary>
-    /// The type of OpenAI completion to use, either Text (legacy) or Chat.
-    /// When using Auto, the client uses OpenAI model names to detect the correct protocol.
-    /// Most OpenAI models use Chat. If you're using a non-OpenAI model, you might want to set this manually.
-    /// </summary>
-    public TextGenerationTypes TextGenerationType { get; set; } = TextGenerationTypes.Auto;
 
     /// <summary>
     /// Model used to embedding generation/
@@ -49,20 +64,21 @@ public class OpenAIConfig
     public int EmbeddingModelMaxTokenTotal { get; set; } = 8191;
 
     /// <summary>
-    /// OpenAI HTTP endpoint. You may need to override this to work with
-    /// OpenAI compatible services like LM Studio.
+    /// The number of dimensions output embeddings should have.
+    /// Only supported in "text-embedding-3" and later models developed with
+    /// MRL, see https://arxiv.org/abs/2205.13147
     /// </summary>
-    public string Endpoint { get; set; } = "https://api.openai.com/v1";
+    public int? EmbeddingDimensions { get; set; }
 
     /// <summary>
-    /// OpenAI API key.
+    /// Per documentation the max value is 2048, however, the default is lower (100)
+    /// to avoid sending too many tokens and being throttled.
+    ///
+    /// You can increase the value in your local configuration if needed.
+    ///
+    /// See https://platform.openai.com/docs/api-reference/embeddings/create.
     /// </summary>
-    public string APIKey { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Optional OpenAI Organization ID.
-    /// </summary>
-    public string? OrgId { get; set; } = string.Empty;
+    public int MaxEmbeddingBatchSize { get; set; } = 100;
 
     /// <summary>
     /// How many times to retry in case of throttling.
@@ -76,19 +92,22 @@ public class OpenAIConfig
     {
         if (string.IsNullOrWhiteSpace(this.APIKey))
         {
-            throw new ArgumentOutOfRangeException(nameof(this.APIKey), "The API Key is empty");
+            throw new ConfigurationException($"OpenAI: {nameof(this.APIKey)} is empty");
         }
 
         if (this.TextModelMaxTokenTotal < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.TextModelMaxTokenTotal),
-                $"{nameof(this.TextModelMaxTokenTotal)} cannot be less than 1");
+            throw new ConfigurationException($"OpenAI: {nameof(this.TextModelMaxTokenTotal)} cannot be less than 1");
         }
 
         if (this.EmbeddingModelMaxTokenTotal < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.EmbeddingModelMaxTokenTotal),
-                $"{nameof(this.EmbeddingModelMaxTokenTotal)} cannot be less than 1");
+            throw new ConfigurationException($"OpenAI: {nameof(this.EmbeddingModelMaxTokenTotal)} cannot be less than 1");
+        }
+
+        if (this.EmbeddingDimensions is < 1)
+        {
+            throw new ConfigurationException($"OpenAI: {nameof(this.EmbeddingDimensions)} cannot be less than 1");
         }
     }
 }

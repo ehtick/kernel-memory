@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,13 +11,14 @@ using Microsoft.KernelMemory.Pipeline;
 
 namespace Microsoft.KernelMemory.DataFormats.Text;
 
-public class MarkDownDecoder : IContentDecoder
+[Experimental("KMEXP00")]
+public sealed class MarkDownDecoder : IContentDecoder
 {
     private readonly ILogger<MarkDownDecoder> _log;
 
-    public MarkDownDecoder(ILogger<MarkDownDecoder>? log = null)
+    public MarkDownDecoder(ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<MarkDownDecoder>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<MarkDownDecoder>();
     }
 
     /// <inheritdoc />
@@ -50,7 +52,7 @@ public class MarkDownDecoder : IContentDecoder
 
         var result = new FileContent(MimeTypes.MarkDown);
         using var reader = new StreamReader(data);
-        var content = await reader.ReadToEndAsync().ConfigureAwait(false);
+        var content = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
         result.Sections.Add(new(1, content.Trim(), true));
         return result;

@@ -29,8 +29,14 @@ public class Document
         }
     }
 
+    /// <summary>
+    /// Files to process
+    /// </summary>
     public FileCollection Files { get; } = new();
 
+    /// <summary>
+    /// Tags to apply to the memories extracted from the files uploaded.
+    /// </summary>
     public TagCollection Tags { get; } = new();
 
     public Document(string? id = null, TagCollection? tags = null, IEnumerable<string>? filePaths = null)
@@ -118,15 +124,8 @@ public class Document
     /// </summary>
     public static string ValidateId(string? id)
     {
-        if (string.IsNullOrEmpty(id))
-        {
-            throw new ArgumentOutOfRangeException(nameof(id), "The document ID is empty");
-        }
-
-        if (!IsValid(id))
-        {
-            throw new ArgumentOutOfRangeException(nameof(id), "The document ID contains invalid chars (allowed: A-B, a-b, 0-9, '.', '_', '-')");
-        }
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(id, nameof(id), "The document ID is empty");
+        ArgumentOutOfRangeExceptionEx.ThrowIfNot(IsValid(id), nameof(id), "The document ID contains invalid chars (allowed: A-B, a-b, 0-9, '.', '_', '-')");
 
         return id!;
     }

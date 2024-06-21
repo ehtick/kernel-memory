@@ -2,7 +2,7 @@
 
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.Configuration;
-using Microsoft.KernelMemory.ContentStorage.DevTools;
+using Microsoft.KernelMemory.DocumentStorage.DevTools;
 using Microsoft.KernelMemory.FileSystem.DevTools;
 using Microsoft.KernelMemory.MemoryStorage.DevTools;
 
@@ -37,7 +37,6 @@ using Microsoft.KernelMemory.MemoryStorage.DevTools;
 /// </summary>
 public static class Program
 {
-    // ReSharper disable once InconsistentNaming
     public static async Task Main()
     {
         // Partition input text in chunks of 100 tokens

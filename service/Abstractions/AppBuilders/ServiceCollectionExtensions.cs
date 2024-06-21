@@ -1,12 +1,14 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 #pragma warning disable IDE0130 // reduce number of "using" statements
-// ReSharper disable once CheckNamespace
+// ReSharper disable once CheckNamespace - reduce number of "using" statements
 namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
+[Experimental("KMEXP00")]
 public static partial class ServiceCollectionExtensions
 {
     /// <summary>

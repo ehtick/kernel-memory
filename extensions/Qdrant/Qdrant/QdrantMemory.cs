@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
@@ -20,7 +21,8 @@ namespace Microsoft.KernelMemory.MemoryDb.Qdrant;
 /// TODO:
 /// * allow using more Qdrant specific filtering logic
 /// </summary>
-public class QdrantMemory : IMemoryDb
+[Experimental("KMEXP03")]
+public sealed class QdrantMemory : IMemoryDb, IMemoryDbUpsertBatch
 {
     private readonly ITextEmbeddingGenerator _embeddingGenerator;
     private readonly QdrantClient<DefaultQdrantPayload> _qdrantClient;
@@ -31,11 +33,11 @@ public class QdrantMemory : IMemoryDb
     /// </summary>
     /// <param name="config">Qdrant connector configuration</param>
     /// <param name="embeddingGenerator">Text embedding generator</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     public QdrantMemory(
         QdrantConfig config,
         ITextEmbeddingGenerator embeddingGenerator,
-        ILogger<QdrantMemory>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
         this._embeddingGenerator = embeddingGenerator;
 
@@ -44,8 +46,8 @@ public class QdrantMemory : IMemoryDb
             throw new QdrantException("Embedding generator not configured");
         }
 
-        this._log = log ?? DefaultLogger<QdrantMemory>.Instance;
-        this._qdrantClient = new QdrantClient<DefaultQdrantPayload>(endpoint: config.Endpoint, apiKey: config.APIKey);
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<QdrantMemory>();
+        this._qdrantClient = new QdrantClient<DefaultQdrantPayload>(endpoint: config.Endpoint, apiKey: config.APIKey, loggerFactory: loggerFactory);
     }
 
     /// <inheritdoc />
@@ -71,8 +73,17 @@ public class QdrantMemory : IMemoryDb
         string index,
         CancellationToken cancellationToken = default)
     {
-        index = NormalizeIndexName(index);
-        return this._qdrantClient.DeleteCollectionAsync(index, cancellationToken);
+        try
+        {
+            index = NormalizeIndexName(index);
+            return this._qdrantClient.DeleteCollectionAsync(index, cancellationToken);
+        }
+        catch (IndexNotFoundException)
+        {
+            this._log.LogInformation("Index not found, nothing to delete");
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -81,39 +92,59 @@ public class QdrantMemory : IMemoryDb
         MemoryRecord record,
         CancellationToken cancellationToken = default)
     {
+        var result = this.UpsertBatchAsync(index, [record], cancellationToken);
+        var id = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
+        return id;
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<string> UpsertBatchAsync(string index, IEnumerable<MemoryRecord> records, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         index = NormalizeIndexName(index);
 
-        QdrantPoint<DefaultQdrantPayload> qdrantPoint;
+        // Call ToList to avoid multiple enumerations (CA1851: Possible multiple enumerations of 'IEnumerable' collection. Consider using an implementation that avoids multiple enumerations).
+        var localRecords = records.ToList();
 
-        if (string.IsNullOrEmpty(record.Id))
+        var qdrantPoints = new List<QdrantPoint<DefaultQdrantPayload>>();
+        foreach (var record in localRecords)
         {
-            record.Id = Guid.NewGuid().ToString("N");
-            qdrantPoint = QdrantPoint<DefaultQdrantPayload>.FromMemoryRecord(record);
-            qdrantPoint.Id = Guid.NewGuid();
+            QdrantPoint<DefaultQdrantPayload> qdrantPoint;
 
-            this._log.LogTrace("Generate new Qdrant point ID {0} and record ID {1}", qdrantPoint.Id, record.Id);
-        }
-        else
-        {
-            qdrantPoint = QdrantPoint<DefaultQdrantPayload>.FromMemoryRecord(record);
-            QdrantPoint<DefaultQdrantPayload>? existingPoint = await this._qdrantClient
-                .GetVectorByPayloadIdAsync(index, record.Id, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            if (existingPoint == null)
+            if (string.IsNullOrEmpty(record.Id))
             {
+                record.Id = Guid.NewGuid().ToString("N");
+                qdrantPoint = QdrantPoint<DefaultQdrantPayload>.FromMemoryRecord(record);
                 qdrantPoint.Id = Guid.NewGuid();
-                this._log.LogTrace("No record with ID {0} found, generated a new point ID {1}", record.Id, qdrantPoint.Id);
+
+                this._log.LogTrace("Generate new Qdrant point ID {0} and record ID {1}", qdrantPoint.Id, record.Id);
             }
             else
             {
-                qdrantPoint.Id = existingPoint.Id;
-                this._log.LogTrace("Point ID {0} found, updating...", qdrantPoint.Id);
+                qdrantPoint = QdrantPoint<DefaultQdrantPayload>.FromMemoryRecord(record);
+                QdrantPoint<DefaultQdrantPayload>? existingPoint = await this._qdrantClient
+                    .GetVectorByPayloadIdAsync(index, record.Id, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                if (existingPoint == null)
+                {
+                    qdrantPoint.Id = Guid.NewGuid();
+                    this._log.LogTrace("No record with ID {0} found, generated a new point ID {1}", record.Id, qdrantPoint.Id);
+                }
+                else
+                {
+                    qdrantPoint.Id = existingPoint.Id;
+                    this._log.LogTrace("Point ID {0} found, updating...", qdrantPoint.Id);
+                }
             }
+
+            qdrantPoints.Add(qdrantPoint);
         }
 
-        await this._qdrantClient.UpsertVectorsAsync(index, new[] { qdrantPoint }, cancellationToken).ConfigureAwait(false);
+        await this._qdrantClient.UpsertVectorsAsync(index, qdrantPoints, cancellationToken).ConfigureAwait(false);
 
-        return record.Id;
+        foreach (var record in localRecords)
+        {
+            yield return record.Id;
+        }
     }
 
     /// <inheritdoc />
@@ -139,14 +170,25 @@ public class QdrantMemory : IMemoryDb
         }
 
         Embedding textEmbedding = await this._embeddingGenerator.GenerateEmbeddingAsync(text, cancellationToken).ConfigureAwait(false);
-        List<(QdrantPoint<DefaultQdrantPayload>, double)> results = await this._qdrantClient.GetSimilarListAsync(
-            collectionName: index,
-            target: textEmbedding,
-            scoreThreshold: minRelevance,
-            requiredTags: requiredTags,
-            limit: limit,
-            withVectors: withEmbeddings,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        List<(QdrantPoint<DefaultQdrantPayload>, double)> results;
+        try
+        {
+            results = await this._qdrantClient.GetSimilarListAsync(
+                collectionName: index,
+                target: textEmbedding,
+                scoreThreshold: minRelevance,
+                requiredTags: requiredTags,
+                limit: limit,
+                withVectors: withEmbeddings,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (IndexNotFoundException e)
+        {
+            this._log.LogWarning(e, "Index not found");
+            // Nothing to return
+            yield break;
+        }
 
         foreach (var point in results)
         {
@@ -174,13 +216,23 @@ public class QdrantMemory : IMemoryDb
             requiredTags.AddRange(filters.Select(filter => filter.GetFilters().Select(x => $"{x.Key}{Constants.ReservedEqualsChar}{x.Value}")));
         }
 
-        List<QdrantPoint<DefaultQdrantPayload>> results = await this._qdrantClient.GetListAsync(
-            collectionName: index,
-            requiredTags: requiredTags,
-            offset: 0,
-            limit: limit,
-            withVectors: withEmbeddings,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        List<QdrantPoint<DefaultQdrantPayload>> results;
+        try
+        {
+            results = await this._qdrantClient.GetListAsync(
+                collectionName: index,
+                requiredTags: requiredTags,
+                offset: 0,
+                limit: limit,
+                withVectors: withEmbeddings,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (IndexNotFoundException e)
+        {
+            this._log.LogWarning(e, "Index not found");
+            // Nothing to return
+            yield break;
+        }
 
         foreach (var point in results)
         {
@@ -196,17 +248,24 @@ public class QdrantMemory : IMemoryDb
     {
         index = NormalizeIndexName(index);
 
-        QdrantPoint<DefaultQdrantPayload>? existingPoint = await this._qdrantClient
-            .GetVectorByPayloadIdAsync(index, record.Id, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        if (existingPoint == null)
+        try
         {
-            this._log.LogTrace("No record with ID {0} found, nothing to delete", record.Id);
-            return;
-        }
+            QdrantPoint<DefaultQdrantPayload>? existingPoint = await this._qdrantClient
+                .GetVectorByPayloadIdAsync(index, record.Id, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (existingPoint == null)
+            {
+                this._log.LogTrace("No record with ID {0} found, nothing to delete", record.Id);
+                return;
+            }
 
-        this._log.LogTrace("Point ID {0} found, deleting...", existingPoint.Id);
-        await this._qdrantClient.DeleteVectorsAsync(index, new List<Guid> { existingPoint.Id }, cancellationToken).ConfigureAwait(false);
+            this._log.LogTrace("Point ID {0} found, deleting...", existingPoint.Id);
+            await this._qdrantClient.DeleteVectorsAsync(index, new List<Guid> { existingPoint.Id }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IndexNotFoundException e)
+        {
+            this._log.LogInformation(e, "Index not found, nothing to delete");
+        }
     }
 
     #region private ================================================================================
@@ -217,11 +276,7 @@ public class QdrantMemory : IMemoryDb
 
     private static string NormalizeIndexName(string index)
     {
-        if (string.IsNullOrWhiteSpace(index))
-        {
-            throw new ArgumentNullException(nameof(index), "The index name is empty");
-        }
-
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(index, nameof(index), "The index name is empty");
         index = s_replaceIndexNameCharsRegex.Replace(index.Trim().ToLowerInvariant(), ValidSeparator);
 
         return index.Trim();

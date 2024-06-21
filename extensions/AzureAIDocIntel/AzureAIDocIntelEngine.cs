@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +9,6 @@ using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.Identity;
 using Microsoft.Extensions.Logging;
-using Microsoft.KernelMemory.Configuration;
 using Microsoft.KernelMemory.Diagnostics;
 
 namespace Microsoft.KernelMemory.DataFormats.AzureAIDocIntel;
@@ -16,7 +16,8 @@ namespace Microsoft.KernelMemory.DataFormats.AzureAIDocIntel;
 /// <summary>
 /// OCR engine based on Azure AI Document Intelligence
 /// </summary>
-public class AzureAIDocIntelEngine : IOcrEngine
+[Experimental("KMEXP02")]
+public sealed class AzureAIDocIntelEngine : IOcrEngine
 {
     private readonly DocumentAnalysisClient _recognizerClient;
     private readonly ILogger<AzureAIDocIntelEngine> _log;
@@ -25,12 +26,12 @@ public class AzureAIDocIntelEngine : IOcrEngine
     /// Creates a new instance of the Azure AI Document Intelligence.
     /// </summary>
     /// <param name="config">Azure AI Document Intelligence settings</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     public AzureAIDocIntelEngine(
         AzureAIDocIntelConfig config,
-        ILogger<AzureAIDocIntelEngine>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<AzureAIDocIntelEngine>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<AzureAIDocIntelEngine>();
 
         switch (config.Auth)
         {

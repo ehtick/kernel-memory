@@ -5,7 +5,6 @@ using System.Text.Json.Serialization;
 
 namespace Microsoft.KernelMemory.MemoryStorage;
 
-// ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
 public class MemoryRecord
 {
     // Memory Db Record schema versioning - Introduced after version 0.23.231218.1
@@ -118,7 +117,7 @@ public class MemoryRecord
         string version = SchemaVersionZero;
         if (this._payload.TryGetValue(Constants.ReservedPayloadSchemaVersionField, out object? versionValue))
         {
-            version = versionValue == null ? string.Empty : versionValue.ToString();
+            version = versionValue == null ? string.Empty : versionValue.ToString()!;
         }
 
         // Upgrade to "20231218A"

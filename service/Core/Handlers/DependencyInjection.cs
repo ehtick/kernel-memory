@@ -11,6 +11,9 @@ using Microsoft.KernelMemory.Pipeline;
 // ReSharper disable once CheckNamespace - reduce number of "using" statements
 namespace Microsoft.KernelMemory;
 
+/// <summary>
+/// Kernel Memory builder extensions
+/// </summary>
 public static partial class KernelMemoryBuilderExtensions
 {
     /// <summary>
@@ -23,6 +26,9 @@ public static partial class KernelMemoryBuilderExtensions
     }
 }
 
+/// <summary>
+/// .NET IServiceCollection dependency injection extensions.
+/// </summary>
 public static partial class DependencyInjection
 {
     /// <summary>
@@ -101,11 +107,7 @@ public static partial class DependencyInjection
             throw new ArgumentException($"'{tHandler.FullName}' doesn't implement interface '{nameof(IPipelineStepHandler)}'", nameof(tHandler));
         }
 
-        if (tHandler == null)
-        {
-            throw new ArgumentNullException(nameof(tHandler), $"Handler type for '{stepName}' is NULL");
-        }
-
+        ArgumentNullExceptionEx.ThrowIfNull(tHandler, nameof(tHandler), $"Handler type for '{stepName}' is NULL");
         services.AddTransient(tHandler, serviceProvider => ActivatorUtilities.CreateInstance(serviceProvider, tHandler, stepName));
 
         // Build generic type: HandlerAsAHostedService<THandler>

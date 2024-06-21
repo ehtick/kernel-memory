@@ -3,9 +3,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.KernelMemory.Search;
 
-// ReSharper disable once CheckNamespace
+// ReSharper disable once CheckNamespace - reduce number of "using" statements
 namespace Microsoft.KernelMemory;
 
+/// <summary>
+/// Kernel Memory builder extensions
+/// </summary>
 public static partial class KernelMemoryBuilderExtensions
 {
     public static IKernelMemoryBuilder WithDefaultSearchClient(
@@ -30,8 +33,18 @@ public static partial class KernelMemoryBuilderExtensions
         builder.Services.AddCustomSearchClient(instance);
         return builder;
     }
+
+    public static IKernelMemoryBuilder WithCustomSearchClient<T>(
+        this IKernelMemoryBuilder builder) where T : class, ISearchClient
+    {
+        builder.Services.AddCustomSearchClient<T>();
+        return builder;
+    }
 }
 
+/// <summary>
+/// .NET IServiceCollection dependency injection extensions.
+/// </summary>
 public static partial class DependencyInjection
 {
     public static IServiceCollection AddDefaultSearchClient(
@@ -45,6 +58,12 @@ public static partial class DependencyInjection
         this IServiceCollection services, ISearchClient instance)
     {
         return services.AddSingleton<ISearchClient>(instance);
+    }
+
+    public static IServiceCollection AddCustomSearchClient<T>(
+        this IServiceCollection services) where T : class, ISearchClient
+    {
+        return services.AddSingleton<ISearchClient, T>();
     }
 
     public static IServiceCollection AddSearchClientConfig(

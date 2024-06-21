@@ -21,11 +21,12 @@ param AzureOpenAIText_Endpoint string
 param AzureOpenAIText_Deployment string
 param AzureOpenAIEmbedding_Endpoint string
 param AzureOpenAIEmbedding_Deployment string
+param AzureAIDocIntel_Endpoint string
 
-var KernelMemory__ServiceAuthorization__AccessKey1 = 'KernelMemoryServiceAuthorizationAccessKey1' //  guid(suffix, '1')
-var KernelMemory__ServiceAuthorization__AccessKey2 = 'KernelMemoryServiceAuthorizationAccessKey2' // guid(suffix, '2')
+param KernelMemory__ServiceAuthorization__AccessKey1 string
+param KernelMemory__ServiceAuthorization__AccessKey2 string
 
-resource kmService 'Microsoft.App/containerapps@2023-11-02-preview' = {
+resource kmService 'Microsoft.App/containerApps@2023-05-01' = {
   name: kmServiceName
   location: location
   properties: {
@@ -47,7 +48,7 @@ resource kmService 'Microsoft.App/containerapps@2023-11-02-preview' = {
         stickySessions: {
           affinity: 'none'
         }
-        additionalPortMappings: []
+        // additionalPortMappings: []
       }
     }
 
@@ -80,7 +81,7 @@ resource kmService 'Microsoft.App/containerapps@2023-11-02-preview' = {
               value: 'true'
             }
             {
-              name: 'KernelMemory__ContentStorageType'
+              name: 'KernelMemory__DocumentStorageType'
               value: 'AzureBlobs'
             }
             {
@@ -124,6 +125,10 @@ resource kmService 'Microsoft.App/containerapps@2023-11-02-preview' = {
               value: 'AzureAISearch'
             }
             {
+              name: 'KernelMemory__DataIngestion__ImageOcrType'
+              value: 'AzureAIDocIntel'
+            }
+            {
               name: 'KernelMemory__Retrieval__EmbeddingGeneratorType'
               value: 'AzureOpenAIEmbedding'
             }
@@ -162,6 +167,10 @@ resource kmService 'Microsoft.App/containerapps@2023-11-02-preview' = {
             {
               name: 'KernelMemory__Services__AzureOpenAIEmbedding__Deployment'
               value: AzureOpenAIEmbedding_Deployment
+            }
+            {
+              name: 'KernelMemory__Services__AzureAIDocIntel__Endpoint'
+              value: AzureAIDocIntel_Endpoint
             }
           ]
         }

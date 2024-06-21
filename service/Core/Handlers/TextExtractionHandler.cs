@@ -16,9 +16,9 @@ using Microsoft.KernelMemory.Pipeline;
 namespace Microsoft.KernelMemory.Handlers;
 
 /// <summary>
-/// Memory ingestion pipeline handler responsible for extracting text from files and saving it to content storage.
+/// Memory ingestion pipeline handler responsible for extracting text from files and saving it to document storage.
 /// </summary>
-public class TextExtractionHandler : IPipelineStepHandler
+public sealed class TextExtractionHandler : IPipelineStepHandler, IDisposable
 {
     private readonly IPipelineOrchestrator _orchestrator;
     private readonly IEnumerable<IContentDecoder> _decoders;
@@ -36,18 +36,18 @@ public class TextExtractionHandler : IPipelineStepHandler
     /// <param name="orchestrator">Current orchestrator used by the pipeline, giving access to content and other helps.</param>
     /// <param name="decoders">The list of content decoders for extracting content</param>
     /// <param name="webScraper">Web scraper instance used to fetch web pages</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     public TextExtractionHandler(
         string stepName,
         IPipelineOrchestrator orchestrator,
         IEnumerable<IContentDecoder> decoders,
         IWebScraper? webScraper = null,
-        ILogger<TextExtractionHandler>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
         this.StepName = stepName;
         this._orchestrator = orchestrator;
         this._decoders = decoders;
-        this._log = log ?? DefaultLogger<TextExtractionHandler>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<TextExtractionHandler>();
         this._webScraper = webScraper ?? new WebScraper();
 
         this._log.LogInformation("Handler '{0}' ready", stepName);
@@ -138,6 +138,13 @@ public class TextExtractionHandler : IPipelineStepHandler
         return (true, pipeline);
     }
 
+    public void Dispose()
+    {
+        if (this._webScraper is not IDisposable x) { return; }
+
+        x.Dispose();
+    }
+
     private async Task<(DataPipeline.FileDetails downloadedPage, BinaryData pageContent, bool skip)> DownloadContentAsync(
         DataPipeline.FileDetails uploadedFile, BinaryData fileContent, CancellationToken cancellationToken)
     {
@@ -167,10 +174,7 @@ public class TextExtractionHandler : IPipelineStepHandler
 
         // IMPORTANT: copy by value to avoid editing the source var
         DataPipeline.FileDetails? result = JsonSerializer.Deserialize<DataPipeline.FileDetails>(JsonSerializer.Serialize(uploadedFile));
-        if (result == null)
-        {
-            throw new ArgumentNullException(nameof(result), "File details cloning failure");
-        }
+        ArgumentNullExceptionEx.ThrowIfNull(result, nameof(result), "File details cloning failure");
 
         result.MimeType = urlDownloadResult.ContentType;
         result.Size = urlDownloadResult.Content.Length;

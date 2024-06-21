@@ -10,7 +10,7 @@ using StackExchange.Redis;
 namespace Microsoft.KernelMemory;
 
 /// <summary>
-/// DI pipelines for Redis Memory.
+/// Kernel Memory builder extensions
 /// </summary>
 public static partial class KernelMemoryBuilderExtensions
 {
@@ -42,7 +42,7 @@ public static partial class KernelMemoryBuilderExtensions
 }
 
 /// <summary>
-/// setup Redis memory within the semantic kernel
+/// .NET IServiceCollection dependency injection extensions.
 /// </summary>
 public static partial class DependencyInjection
 {

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -20,6 +21,7 @@ namespace Microsoft.KernelMemory.MemoryStorage.DevTools;
 /// without dependencies on embedding generators.
 /// This is NOT meant for real scenarios, only for code development.
 /// </summary>
+[Experimental("KMEXP03")]
 public class SimpleTextDb : IMemoryDb
 {
     private readonly IFileSystem _fileSystem;
@@ -27,17 +29,17 @@ public class SimpleTextDb : IMemoryDb
 
     public SimpleTextDb(
         SimpleTextDbConfig config,
-        ILogger<SimpleTextDb>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<SimpleTextDb>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<SimpleTextDb>();
         switch (config.StorageType)
         {
             case FileSystemTypes.Disk:
-                this._fileSystem = new DiskFileSystem(config.Directory, this._log);
+                this._fileSystem = new DiskFileSystem(config.Directory, null, loggerFactory);
                 break;
 
             case FileSystemTypes.Volatile:
-                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, this._log);
+                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, null, loggerFactory);
                 break;
 
             default:
@@ -186,11 +188,7 @@ public class SimpleTextDb : IMemoryDb
 
     private static string NormalizeIndexName(string index)
     {
-        if (string.IsNullOrWhiteSpace(index))
-        {
-            throw new ArgumentNullException(nameof(index), "The index name is empty");
-        }
-
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(index, nameof(index), "The index name is empty");
         index = s_replaceIndexNameCharsRegex.Replace(index.Trim().ToLowerInvariant(), ValidSeparator);
 
         return index.Trim();

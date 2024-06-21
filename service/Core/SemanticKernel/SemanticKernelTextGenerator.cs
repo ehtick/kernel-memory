@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -14,7 +13,7 @@ using Microsoft.SemanticKernel.TextGeneration;
 
 namespace Microsoft.KernelMemory.SemanticKernel;
 
-internal class SemanticKernelTextGenerator : ITextGenerator
+internal sealed class SemanticKernelTextGenerator : ITextGenerator
 {
     private readonly ITextGenerationService _service;
     private readonly ITextTokenizer _tokenizer;
@@ -32,11 +31,12 @@ internal class SemanticKernelTextGenerator : ITextGenerator
         ITextTokenizer? textTokenizer = null,
         ILoggerFactory? loggerFactory = null)
     {
-        this._service = textGenerationService ?? throw new ArgumentNullException(nameof(textGenerationService));
+        ArgumentNullExceptionEx.ThrowIfNull(textGenerationService, nameof(textGenerationService), "Text generation service is null");
+
+        this._service = textGenerationService;
         this.MaxTokenTotal = config.MaxTokenTotal;
 
-        var log = loggerFactory?.CreateLogger<SemanticKernelTextGenerator>();
-        this._log = log ?? DefaultLogger<SemanticKernelTextGenerator>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<SemanticKernelTextGenerator>();
 
         if (textTokenizer == null)
         {
@@ -73,21 +73,21 @@ internal class SemanticKernelTextGenerator : ITextGenerator
     {
         var settings = new PromptExecutionSettings
         {
-            ExtensionData = new Dictionary<string, object>()
+            ExtensionData = new Dictionary<string, object>
             {
-                [nameof(options.Temperature)] = options.Temperature,
-                [nameof(options.TopP)] = options.TopP,
-                [nameof(options.PresencePenalty)] = options.PresencePenalty,
-                [nameof(options.FrequencyPenalty)] = options.FrequencyPenalty,
-                [nameof(options.StopSequences)] = options.StopSequences,
-                [nameof(options.ResultsPerPrompt)] = options.ResultsPerPrompt,
-                [nameof(options.TokenSelectionBiases)] = options.TokenSelectionBiases
+                ["temperature"] = options.Temperature,
+                ["top_p"] = options.NucleusSampling,
+                ["presence_penalty"] = options.PresencePenalty,
+                ["frequency_penalty"] = options.FrequencyPenalty,
+                ["stop_sequences"] = options.StopSequences,
+                ["results_per_prompt"] = options.ResultsPerPrompt,
+                ["token_selection_biases"] = options.TokenSelectionBiases
             }
         };
 
         if (options.MaxTokens != null)
         {
-            settings.ExtensionData[nameof(options.MaxTokens)] = options.MaxTokens;
+            settings.ExtensionData["max_tokens"] = options.MaxTokens;
         }
 
         return settings;

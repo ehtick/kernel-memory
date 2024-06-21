@@ -21,6 +21,26 @@ For model limits specific to your region, refer to the documentation at https://
 @maxValue(40)
 param embeddingDeploymentCapacity int = 30
 
+@description('''
+PLEASE CHOOSE A SECURE AND SECRET KEY ! -
+Kernel Memory Service Authorization AccessKey 1.
+The value is stored as an environment variable and is required by the web service to authenticate HTTP requests.
+''')
+@minLength(32)
+@maxLength(128)
+@secure()
+param WebServiceAuthorizationKey1 string
+
+@description('''
+PLEASE CHOOSE A SECURE AND SECRET KEY ! -
+Kernel Memory Service Authorization AccessKey 2.
+The value is stored as an environment variable and is required by the web service to authenticate HTTP requests.
+''')
+@minLength(32)
+@maxLength(128)
+@secure()
+param WebServiceAuthorizationKey2 string
+
 var rg = resourceGroup()
 
 var location = resourceGroup().location
@@ -85,7 +105,7 @@ module managedidentity 'modules/managed-identity.bicep' = {
   Module to create a Storage Account
   See https://learn.microsoft.com/azure/storage/common/storage-account-overview
   
-  The storage account is used to store files (KM Content Storage) and
+  The storage account is used to store files (KM Document Storage) and
   to run asynchronous ingestion (KM Pipelines Orchestration).
 */
 module storage 'modules/storage.bicep' = {
@@ -123,7 +143,7 @@ module search 'modules/ai-search.bicep' = {
   
   Azure OpenAI is used to generate text embeddings, and to generate text from memories (answers and summaries)
 */
-module openAi 'modules/cognitive-services.bicep' = {
+module openAi 'modules/cognitive-services-openAI.bicep' = {
   name: 'openai-${suffix}'
   scope: rg
   params: {
@@ -131,11 +151,29 @@ module openAi 'modules/cognitive-services.bicep' = {
     managedIdentityPrincipalId: managedidentity.outputs.managedIdentityPrincipalId
     name: 'km-openai-${suffix}'
     location: location
-    // ags: []
     sku: {
       name: 'S0'
     }
     deployments: openAiDeployments
+  }
+}
+
+/*
+  Module to create a Azure Document Intelligence service
+  See https://azure.microsoft.com/products/ai-services/ai-document-intelligence
+  Azure Document Intelligence is used to extract text from images
+*/
+module docIntel 'modules/cognitive-services-docIntel.bicep' = {
+  name: 'docIntel-${suffix}'
+  scope: rg
+  params: {
+    suffix: suffix
+    managedIdentityPrincipalId: managedidentity.outputs.managedIdentityPrincipalId
+    name: 'km-docIntel-${suffix}'
+    location: location
+    sku: {
+      name: 'S0'
+    }
   }
 }
 
@@ -171,6 +209,9 @@ module containerAppService 'modules/container-app.bicep' = {
     managedIdentityId: managedidentity.outputs.managedIdentityId
     managedIdentityClientId: managedidentity.outputs.managedIdentityClientId
 
+    KernelMemory__ServiceAuthorization__AccessKey1: WebServiceAuthorizationKey1
+    KernelMemory__ServiceAuthorization__AccessKey2: WebServiceAuthorizationKey2
+
     AzureAISearch_Endpoint: 'https://${search.outputs.searchName }.search.windows.net'
     AzureBlobs_Account: storage.outputs.storageAccountName
     AzureQueues_Account: storage.outputs.storageAccountName
@@ -179,6 +220,7 @@ module containerAppService 'modules/container-app.bicep' = {
     AzureOpenAIEmbedding_Endpoint: openAi.outputs.endpoint
     AzureOpenAIText_Deployment: chatGpt.deploymentName
     AzureOpenAIText_Endpoint: openAi.outputs.endpoint
+    AzureAIDocIntel_Endpoint: docIntel.outputs.endpoint
   }
 }
 

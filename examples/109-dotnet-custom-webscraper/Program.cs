@@ -1,7 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-// ReSharper disable InconsistentNaming
-
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.DataFormats.WebPages;
 
@@ -40,6 +38,6 @@ public static class Program
         // Note: using custom "steps" to avoid LLM calls, and test just the custom web scraper
         await memory.ImportWebPageAsync(
             "https://raw.githubusercontent.com/microsoft/kernel-memory/main/README.md",
-            steps: new[] { "extract" });
+            steps: ["extract"]);
     }
 }

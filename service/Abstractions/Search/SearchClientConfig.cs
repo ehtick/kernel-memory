@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Collections.Generic;
 
 #pragma warning disable IDE0130 // reduce number of "using" statements
@@ -42,6 +41,19 @@ public class SearchClientConfig
     public string EmptyAnswer { get; set; } = "INFO NOT FOUND";
 
     /// <summary>
+    /// Template use to inject facts into the RAG prompt.
+    /// Available placeholders:
+    /// * {{$content}}  : text from memory, i.e. chunk of text extracted from the source
+    /// * {{$source}}   : name of the source file, or URL of the web page, where the content originated.
+    /// * {{$relevance}}: relevance score of the current chunk of text
+    /// * {{$memoryId}} : ID of the memory record
+    /// * {{$tags}}     : list of tags, excluding reserved/internal ones
+    /// * {{$tag[X]}}   : tag X value(s), replaced with "-" if the value is empty
+    /// * {{$meta[X]}}  : value of memory record payload X field (memory payload is also known as metadata), replaced with "-" if the value is empty
+    /// </summary>
+    public string FactTemplate { get; set; } = "==== [File:{{$source}};Relevance:{{$relevance}}]:\n{{$content}}";
+
+    /// <summary>
     /// Number between 0.0 and 2.0. It controls the randomness of the completion.
     /// The higher the temperature, the more random the completion.
     /// </summary>
@@ -70,7 +82,7 @@ public class SearchClientConfig
     /// <summary>
     /// Up to 4 sequences where the completion will stop generating further tokens.
     /// </summary>
-    public IList<string> StopSequences { get; set; } = Array.Empty<string>();
+    public IList<string> StopSequences { get; set; } = new List<string>();
 
     /// <summary>
     /// Modify the likelihood of specified tokens appearing in the completion.
@@ -84,50 +96,42 @@ public class SearchClientConfig
     {
         if (this.MaxAskPromptSize is > 0 and < 1024)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.MaxAskPromptSize),
-                $"{nameof(this.MaxAskPromptSize)} cannot be less than 1024");
+            throw new ConfigurationException($"SearchClient: {nameof(this.MaxAskPromptSize)} cannot be less than 1024");
         }
 
         if (this.MaxMatchesCount < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.MaxMatchesCount),
-                $"{nameof(this.MaxMatchesCount)} cannot be less than 1");
+            throw new ConfigurationException($"SearchClient: {nameof(this.MaxMatchesCount)} cannot be less than 1");
         }
 
         if (this.AnswerTokens < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.AnswerTokens),
-                $"{nameof(this.AnswerTokens)} cannot be less than 1");
+            throw new ConfigurationException($"SearchClient: {nameof(this.AnswerTokens)} cannot be less than 1");
         }
 
         if (this.EmptyAnswer.Length > 256)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.EmptyAnswer),
-                $"{nameof(this.EmptyAnswer)} is too long, consider something shorter");
+            throw new ConfigurationException($"SearchClient: {nameof(this.EmptyAnswer)} is too long, consider something shorter");
         }
 
         if (this.Temperature is < 0 or > 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.Temperature),
-                $"{nameof(this.Temperature)} must be between 0 and 2");
+            throw new ConfigurationException($"SearchClient: {nameof(this.Temperature)} must be between 0 and 2");
         }
 
         if (this.TopP is < 0 or > 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.TopP),
-                $"{nameof(this.TopP)} must be between 0 and 2");
+            throw new ConfigurationException($"SearchClient: {nameof(this.TopP)} must be between 0 and 2");
         }
 
         if (this.PresencePenalty is < -2 or > 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.PresencePenalty),
-                $"{nameof(this.PresencePenalty)} must be between -2 and 2");
+            throw new ConfigurationException($"SearchClient: {nameof(this.PresencePenalty)} must be between -2 and 2");
         }
 
         if (this.FrequencyPenalty is < -2 or > 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(this.FrequencyPenalty),
-                $"{nameof(this.FrequencyPenalty)} must be between -2 and 2");
+            throw new ConfigurationException($"SearchClient: {nameof(this.FrequencyPenalty)} must be between -2 and 2");
         }
     }
 }

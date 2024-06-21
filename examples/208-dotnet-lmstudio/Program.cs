@@ -4,7 +4,6 @@ using Microsoft.KernelMemory;
 
 public static class Program
 {
-    // ReSharper disable once InconsistentNaming
     public static async Task Main()
     {
         // Using OpenAI for embeddings
@@ -12,7 +11,7 @@ public static class Program
         {
             EmbeddingModel = "text-embedding-ada-002",
             EmbeddingModelMaxTokenTotal = 8191,
-            APIKey = Env.Var("OPENAI_API_KEY")
+            APIKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")!
         };
 
         // Using LM Studio for text generation

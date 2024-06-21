@@ -3,7 +3,6 @@
 using System;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.KernelMemory.Configuration;
 
 namespace Microsoft.KernelMemory.Diagnostics;
 
@@ -53,6 +52,8 @@ public static class DefaultLogger
             {
                 if (!TryGetLogLevel(section.Value, out LogLevel level)) { continue; }
 
+                // if (section.Key == DefaultCategoryKey) { builder.SetMinimumLevel(level); }
+                // else { builder.AddFilter(section.Key, level); }
                 builder.AddFilter(category: (section.Key == DefaultCategoryKey) ? null : section.Key, level: level);
             }
         });
@@ -71,6 +72,6 @@ public static class DefaultLogger
             return true;
         }
 
-        throw new ConfigurationException($"Log level not supported: {value}");
+        throw new ConfigurationException($"Logger: log level '{value}' not supported");
     }
 }

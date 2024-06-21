@@ -2,20 +2,23 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory.AI;
-using Microsoft.KernelMemory.ContentStorage;
+using Microsoft.KernelMemory.Context;
 using Microsoft.KernelMemory.Diagnostics;
+using Microsoft.KernelMemory.DocumentStorage;
 using Microsoft.KernelMemory.FileSystem.DevTools;
 using Microsoft.KernelMemory.MemoryStorage;
 using Microsoft.KernelMemory.Models;
 
 namespace Microsoft.KernelMemory.Pipeline;
 
+[Experimental("KMEXP04")]
 public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
 {
     private static readonly JsonSerializerOptions s_indentedJsonOptions = new() { WriteIndented = true };
@@ -25,7 +28,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     private readonly List<ITextEmbeddingGenerator> _embeddingGenerators;
     private readonly ITextGenerator _textGenerator;
     private readonly List<string> _defaultIngestionSteps;
-    private readonly IContentStorage _contentStorage;
+    private readonly IDocumentStorage _documentStorage;
     private readonly IMimeTypeDetection _mimeTypeDetection;
     private readonly string? _defaultIndexName;
 
@@ -33,7 +36,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     protected CancellationTokenSource CancellationTokenSource { get; private set; }
 
     protected BaseOrchestrator(
-        IContentStorage contentStorage,
+        IDocumentStorage documentStorage,
         List<ITextEmbeddingGenerator> embeddingGenerators,
         List<IMemoryDb> memoryDbs,
         ITextGenerator textGenerator,
@@ -46,7 +49,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         this.Log = log ?? DefaultLogger<BaseOrchestrator>.Instance;
         this._defaultIngestionSteps = config.DataIngestion.GetDefaultStepsOrDefaults();
         this.EmbeddingGenerationEnabled = config.DataIngestion.EmbeddingGenerationEnabled;
-        this._contentStorage = contentStorage;
+        this._documentStorage = documentStorage;
         this._embeddingGenerators = embeddingGenerators;
         this._memoryDbs = memoryDbs;
         this._textGenerator = textGenerator;
@@ -79,7 +82,11 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     public abstract Task RunPipelineAsync(DataPipeline pipeline, CancellationToken cancellationToken = default);
 
     ///<inheritdoc />
-    public async Task<string> ImportDocumentAsync(string index, DocumentUploadRequest uploadRequest, CancellationToken cancellationToken = default)
+    public async Task<string> ImportDocumentAsync(
+        string index,
+        DocumentUploadRequest uploadRequest,
+        IContext? context = null,
+        CancellationToken cancellationToken = default)
     {
         this.Log.LogInformation("Queueing upload of {0} files for further processing [request {1}]", uploadRequest.Files.Count, uploadRequest.DocumentId);
 
@@ -88,8 +95,9 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         var pipeline = this.PrepareNewDocumentUpload(
             index: index,
             documentId: uploadRequest.DocumentId,
-            uploadRequest.Tags,
-            uploadRequest.Files);
+            tags: uploadRequest.Tags,
+            filesToUpload: uploadRequest.Files,
+            contextArgs: context?.Arguments);
 
         if (uploadRequest.Steps.Count > 0)
         {
@@ -125,7 +133,8 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         string index,
         string documentId,
         TagCollection tags,
-        IEnumerable<DocumentUploadRequest.UploadedFile>? filesToUpload = null)
+        IEnumerable<DocumentUploadRequest.UploadedFile>? filesToUpload = null,
+        IDictionary<string, object?>? contextArgs = null)
     {
         index = IndexName.CleanName(index, this._defaultIndexName);
 
@@ -136,6 +145,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
             Index = index,
             DocumentId = documentId,
             Tags = tags,
+            ContextArguments = contextArgs ?? new Dictionary<string, object?>(),
             FilesToUpload = filesToUpload.ToList(),
         };
 
@@ -151,8 +161,16 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
 
         try
         {
-            BinaryData? content = await (this._contentStorage.ReadFileAsync(index, documentId, Constants.PipelineStatusFilename, false, cancellationToken)
-                .ConfigureAwait(false));
+            using StreamableFileContent? streamableContent = await this._documentStorage.ReadFileAsync(index, documentId, Constants.PipelineStatusFilename, false, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (streamableContent == null)
+            {
+                throw new InvalidPipelineDataException("The pipeline data is not found");
+            }
+
+            BinaryData? content = await BinaryData.FromStreamAsync(await streamableContent.GetStreamAsync().ConfigureAwait(false), cancellationToken)
+                .ConfigureAwait(false);
 
             if (content == null)
             {
@@ -168,7 +186,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
 
             return result;
         }
-        catch (ContentStorageFileNotFoundException)
+        catch (DocumentStorageFileNotFoundException)
         {
             throw new PipelineNotFoundException("Pipeline/Document not found");
         }
@@ -209,8 +227,15 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     ///<inheritdoc />
     public Task StopAllPipelinesAsync()
     {
-        this.CancellationTokenSource.Cancel();
-        return Task.CompletedTask;
+        return this.CancellationTokenSource.CancelAsync();
+    }
+
+    ///<inheritdoc />
+    public async Task<StreamableFileContent> ReadFileAsStreamAsync(DataPipeline pipeline, string fileName, CancellationToken cancellationToken = default)
+    {
+        pipeline.Index = IndexName.CleanName(pipeline.Index, this._defaultIndexName);
+        return await this._documentStorage.ReadFileAsync(pipeline.Index, pipeline.DocumentId, fileName, true, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     ///<inheritdoc />
@@ -221,10 +246,11 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     }
 
     ///<inheritdoc />
-    public Task<BinaryData> ReadFileAsync(DataPipeline pipeline, string fileName, CancellationToken cancellationToken = default)
+    public async Task<BinaryData> ReadFileAsync(DataPipeline pipeline, string fileName, CancellationToken cancellationToken = default)
     {
-        pipeline.Index = IndexName.CleanName(pipeline.Index, this._defaultIndexName);
-        return this._contentStorage.ReadFileAsync(pipeline.Index, pipeline.DocumentId, fileName, true, cancellationToken);
+        using StreamableFileContent streamableContent = await this.ReadFileAsStreamAsync(pipeline, fileName, cancellationToken).ConfigureAwait(false);
+        return await BinaryData.FromStreamAsync(await streamableContent.GetStreamAsync().ConfigureAwait(false), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     ///<inheritdoc />
@@ -238,7 +264,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     public Task WriteFileAsync(DataPipeline pipeline, string fileName, BinaryData fileContent, CancellationToken cancellationToken = default)
     {
         pipeline.Index = IndexName.CleanName(pipeline.Index, this._defaultIndexName);
-        return this._contentStorage.WriteFileAsync(pipeline.Index, pipeline.DocumentId, fileName, fileContent.ToStream(), cancellationToken);
+        return this._documentStorage.WriteFileAsync(pipeline.Index, pipeline.DocumentId, fileName, fileContent.ToStream(), cancellationToken);
     }
 
     ///<inheritdoc />
@@ -297,7 +323,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         {
             try
             {
-                await this._contentStorage.DeleteDocumentDirectoryAsync(index: pipeline.Index, documentId: pipeline.DocumentId, cancellationToken).ConfigureAwait(false);
+                await this._documentStorage.DeleteDocumentDirectoryAsync(index: pipeline.Index, documentId: pipeline.DocumentId, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -309,7 +335,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         {
             try
             {
-                await this._contentStorage.DeleteIndexDirectoryAsync(pipeline.Index, cancellationToken).ConfigureAwait(false);
+                await this._documentStorage.DeleteIndexDirectoryAsync(pipeline.Index, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -405,7 +431,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
         this.Log.LogDebug("Saving pipeline status to '{0}/{1}/{2}'", pipeline.Index, pipeline.DocumentId, Constants.PipelineStatusFilename);
         try
         {
-            await this._contentStorage.WriteFileAsync(
+            await this._documentStorage.WriteFileAsync(
                     pipeline.Index,
                     pipeline.DocumentId,
                     Constants.PipelineStatusFilename,
@@ -429,8 +455,8 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
     {
         this.Log.LogDebug("Uploading {0} files, pipeline '{1}/{2}'", pipeline.FilesToUpload.Count, pipeline.Index, pipeline.DocumentId);
 
-        await this._contentStorage.CreateIndexDirectoryAsync(pipeline.Index, cancellationToken).ConfigureAwait(false);
-        await this._contentStorage.CreateDocumentDirectoryAsync(pipeline.Index, pipeline.DocumentId, cancellationToken).ConfigureAwait(false);
+        await this._documentStorage.CreateIndexDirectoryAsync(pipeline.Index, cancellationToken).ConfigureAwait(false);
+        await this._documentStorage.CreateDocumentDirectoryAsync(pipeline.Index, pipeline.DocumentId, cancellationToken).ConfigureAwait(false);
 
         foreach (DocumentUploadRequest.UploadedFile file in pipeline.FilesToUpload)
         {
@@ -444,7 +470,7 @@ public abstract class BaseOrchestrator : IPipelineOrchestrator, IDisposable
             var fileSize = file.FileContent.Length;
 
             this.Log.LogDebug("Uploading file '{0}', size {1} bytes", file.FileName, fileSize);
-            await this._contentStorage.WriteFileAsync(pipeline.Index, pipeline.DocumentId, file.FileName, file.FileContent, cancellationToken).ConfigureAwait(false);
+            await this._documentStorage.WriteFileAsync(pipeline.Index, pipeline.DocumentId, file.FileName, file.FileContent, cancellationToken).ConfigureAwait(false);
 
             string mimeType = string.Empty;
             try

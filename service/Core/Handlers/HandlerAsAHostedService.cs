@@ -15,7 +15,7 @@ namespace Microsoft.KernelMemory;
 /// Wrapper of handler classes, allowing to run handlers as services hosted by IHost
 /// </summary>
 /// <typeparam name="T">Handler class</typeparam>
-public class HandlerAsAHostedService<T> : IHostedService where T : IPipelineStepHandler
+public sealed class HandlerAsAHostedService<T> : IHostedService where T : IPipelineStepHandler
 {
     private readonly T _handler;
     private readonly IPipelineOrchestrator _orchestrator;
@@ -26,13 +26,13 @@ public class HandlerAsAHostedService<T> : IHostedService where T : IPipelineStep
         string stepName,
         IPipelineOrchestrator orchestrator,
         T handler,
-        ILogger<HandlerAsAHostedService<T>>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
         this._stepName = stepName;
         this._orchestrator = orchestrator;
         this._handler = handler;
 
-        this._log = log ?? DefaultLogger<HandlerAsAHostedService<T>>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<HandlerAsAHostedService<T>>();
         this._log.LogInformation("Handler as service created: {0}", stepName);
     }
 

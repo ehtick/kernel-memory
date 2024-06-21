@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -16,19 +17,31 @@ using Polly;
 
 namespace Microsoft.KernelMemory.DataFormats.WebPages;
 
-public class WebScraper : IWebScraper
+[Experimental("KMEXP00")]
+public sealed class WebScraper : IWebScraper, IDisposable
 {
+    private readonly HttpClient _httpClient;
     private readonly ILogger _log;
 
-    public WebScraper(ILogger<WebScraper>? log = null)
+    public WebScraper(
+        HttpClient? httpClient = null,
+        ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<WebScraper>.Instance;
+        this._httpClient = httpClient ?? new HttpClient();
+        this._httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(Telemetry.HttpUserAgent);
+
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<WebScraper>();
     }
 
     /// <inheritdoc />
     public async Task<WebScraperResult> GetContentAsync(string url, CancellationToken cancellationToken = default)
     {
         return await this.GetAsync(new Uri(url), cancellationToken).ConfigureAwait(false);
+    }
+
+    public void Dispose()
+    {
+        this._httpClient.Dispose();
     }
 
     private async Task<WebScraperResult> GetAsync(Uri url, CancellationToken cancellationToken = default)
@@ -39,11 +52,8 @@ public class WebScraper : IWebScraper
             return new WebScraperResult { Success = false, Error = $"Unknown URL protocol: {url.Scheme}" };
         }
 
-        // TODO: perf/TCP ports/reuse client
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(Telemetry.HttpUserAgent);
         HttpResponseMessage? response = await RetryLogic()
-            .ExecuteAsync(async _ => await client.GetAsync(url, cancellationToken).ConfigureAwait(false), cancellationToken)
+            .ExecuteAsync(async _ => await this._httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false), cancellationToken)
             .ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -21,6 +22,7 @@ namespace Microsoft.KernelMemory.MemoryStorage.DevTools;
 /// Basic vector db implementation, designed for tests and demos only.
 /// When searching, uses brute force comparing against all stored records.
 /// </summary>
+[Experimental("KMEXP03")]
 public class SimpleVectorDb : IMemoryDb
 {
     private readonly ITextEmbeddingGenerator _embeddingGenerator;
@@ -32,11 +34,11 @@ public class SimpleVectorDb : IMemoryDb
     /// </summary>
     /// <param name="config">Simple vector db settings</param>
     /// <param name="embeddingGenerator">Text embedding generator</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     public SimpleVectorDb(
         SimpleVectorDbConfig config,
         ITextEmbeddingGenerator embeddingGenerator,
-        ILogger<SimpleVectorDb>? log = null)
+        ILoggerFactory? loggerFactory = null)
     {
         this._embeddingGenerator = embeddingGenerator;
 
@@ -45,15 +47,15 @@ public class SimpleVectorDb : IMemoryDb
             throw new SimpleVectorDbException("Embedding generator not configured");
         }
 
-        this._log = log ?? DefaultLogger<SimpleVectorDb>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<SimpleVectorDb>();
         switch (config.StorageType)
         {
             case FileSystemTypes.Disk:
-                this._fileSystem = new DiskFileSystem(config.Directory, this._log);
+                this._fileSystem = new DiskFileSystem(config.Directory, null, loggerFactory);
                 break;
 
             case FileSystemTypes.Volatile:
-                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, this._log);
+                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, null, loggerFactory);
                 break;
 
             default:
@@ -84,6 +86,7 @@ public class SimpleVectorDb : IMemoryDb
     /// <inheritdoc />
     public async Task<string> UpsertAsync(string index, MemoryRecord record, CancellationToken cancellationToken = default)
     {
+        // Note: if the index doesn't exist, it's automatically created (the index is just a folder)
         index = NormalizeIndexName(index);
         await this._fileSystem.WriteFileAsync(index, "", EncodeId(record.Id), JsonSerializer.Serialize(record), cancellationToken).ConfigureAwait(false);
         return record.Id;
@@ -193,11 +196,7 @@ public class SimpleVectorDb : IMemoryDb
 
     private static string NormalizeIndexName(string index)
     {
-        if (string.IsNullOrWhiteSpace(index))
-        {
-            throw new ArgumentNullException(nameof(index), "The index name is empty");
-        }
-
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(index, nameof(index), "The index name is empty");
         index = s_replaceIndexNameCharsRegex.Replace(index.Trim().ToLowerInvariant(), ValidSeparator);
 
         return index.Trim();

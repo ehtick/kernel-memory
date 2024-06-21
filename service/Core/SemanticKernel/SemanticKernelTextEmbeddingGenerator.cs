@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -12,7 +11,7 @@ using Microsoft.SemanticKernel.Embeddings;
 
 namespace Microsoft.KernelMemory.SemanticKernel;
 
-internal class SemanticKernelTextEmbeddingGenerator : ITextEmbeddingGenerator
+internal sealed class SemanticKernelTextEmbeddingGenerator : ITextEmbeddingGenerator
 {
     private readonly ITextEmbeddingGenerationService _service;
     private readonly ITextTokenizer _tokenizer;
@@ -30,11 +29,12 @@ internal class SemanticKernelTextEmbeddingGenerator : ITextEmbeddingGenerator
         ITextTokenizer? textTokenizer = null,
         ILoggerFactory? loggerFactory = null)
     {
-        this._service = textEmbeddingGenerationService ?? throw new ArgumentNullException(nameof(textEmbeddingGenerationService));
+        ArgumentNullExceptionEx.ThrowIfNull(textEmbeddingGenerationService, nameof(textEmbeddingGenerationService), "Embedding generation service is null");
+
+        this._service = textEmbeddingGenerationService;
         this.MaxTokens = config.MaxTokenTotal;
 
-        var log = loggerFactory?.CreateLogger<SemanticKernelTextEmbeddingGenerator>();
-        this._log = log ?? DefaultLogger<SemanticKernelTextEmbeddingGenerator>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<SemanticKernelTextEmbeddingGenerator>();
 
         if (textTokenizer == null)
         {

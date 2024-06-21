@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -15,15 +16,16 @@ using Microsoft.KernelMemory.Pipeline;
 
 namespace Microsoft.KernelMemory.DataFormats.Office;
 
-public class MsPowerPointDecoder : IContentDecoder
+[Experimental("KMEXP00")]
+public sealed class MsPowerPointDecoder : IContentDecoder
 {
     private readonly MsPowerPointDecoderConfig _config;
     private readonly ILogger<MsPowerPointDecoder> _log;
 
-    public MsPowerPointDecoder(MsPowerPointDecoderConfig? config = null, ILogger<MsPowerPointDecoder>? log = null)
+    public MsPowerPointDecoder(MsPowerPointDecoderConfig? config = null, ILoggerFactory? loggerFactory = null)
     {
         this._config = config ?? new MsPowerPointDecoderConfig();
-        this._log = log ?? DefaultLogger<MsPowerPointDecoder>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<MsPowerPointDecoder>();
     }
 
     /// <inheritdoc />

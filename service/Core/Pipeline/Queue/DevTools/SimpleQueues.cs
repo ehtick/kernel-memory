@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,7 @@ namespace Microsoft.KernelMemory.Pipeline.Queue.DevTools;
 /// Basic implementation of a file based queue for local testing.
 /// This is not meant for production scenarios, only to avoid spinning up additional services.
 /// </summary>
+[Experimental("KMEXP04")]
 public sealed class SimpleQueues : IQueue
 {
     private sealed class MessageEventArgs : EventArgs
@@ -74,19 +76,19 @@ public sealed class SimpleQueues : IQueue
     /// Create new file based queue
     /// </summary>
     /// <param name="config">File queue configuration</param>
-    /// <param name="log">Application logger</param>
+    /// <param name="loggerFactory">Application logger factory</param>
     /// <exception cref="InvalidOperationException"></exception>
-    public SimpleQueues(SimpleQueuesConfig config, ILogger<SimpleQueues>? log = null)
+    public SimpleQueues(SimpleQueuesConfig config, ILoggerFactory? loggerFactory = null)
     {
-        this._log = log ?? DefaultLogger<SimpleQueues>.Instance;
+        this._log = (loggerFactory ?? DefaultLogger.Factory).CreateLogger<SimpleQueues>();
         switch (config.StorageType)
         {
             case FileSystemTypes.Disk:
-                this._fileSystem = new DiskFileSystem(config.Directory, this._log);
+                this._fileSystem = new DiskFileSystem(config.Directory, null, loggerFactory);
                 break;
 
             case FileSystemTypes.Volatile:
-                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, this._log);
+                this._fileSystem = VolatileFileSystem.GetInstance(config.Directory, null, loggerFactory);
                 break;
 
             default:
@@ -97,11 +99,7 @@ public sealed class SimpleQueues : IQueue
     /// <inheritdoc />
     public async Task<IQueue> ConnectToQueueAsync(string queueName, QueueOptions options = default, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(queueName))
-        {
-            throw new ArgumentOutOfRangeException(nameof(queueName), "The queue name is empty");
-        }
-
+        ArgumentNullExceptionEx.ThrowIfNullOrWhiteSpace(queueName, nameof(queueName), "The queue name is empty");
         if (!string.IsNullOrEmpty(this._queueName))
         {
             throw new InvalidOperationException($"The queue is already connected to `{this._queueName}`");

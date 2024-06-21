@@ -7,7 +7,7 @@ using Microsoft.KernelMemory.MemoryDb.Redis;
 using Microsoft.KernelMemory.MemoryStorage;
 using StackExchange.Redis;
 
-namespace Redis.TestApplication;
+namespace Microsoft.Redis.TestApplication;
 
 public static class Program
 {
@@ -158,7 +158,7 @@ public static class Program
                 EmbeddingModel = "text-embedding-ada-002",
                 EmbeddingModelMaxTokenTotal = 8_191,
                 APIKey = openAIApiKey
-            }, log: null);
+            }, loggerFactory: null);
         }
         else
         {
